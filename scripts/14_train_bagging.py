@@ -1,63 +1,32 @@
 #!/usr/bin/env python3
-"""Train Bagging model with MLflow tracking"""
-import os, logging, pandas as pd, mlflow, mlflow.sklearn, joblib, json
+import pandas as pd, joblib, os, mlflow
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import f1_score
 from huggingface_hub import hf_hub_download
-from sklearn.ensemble import BaggingClassifier
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import BaggingClassifier, RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
+from xgboost import XGBClassifier
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-HF_USERNAME = os.getenv("HF_USERNAME", "SharleyK")
-DATASET_NAME = os.getenv("DATASET_NAME", "PredictiveMaintenance")
+HF_USERNAME = "SharleyK"
+DATASET_NAME = "PredictiveMaintenance"
 repo_id = f"{HF_USERNAME}/{DATASET_NAME}"
 
-mlflow.set_tracking_uri("file:./mlruns")
-mlflow.set_experiment("Predictive_Maintenance")
-
-# Load data
-train_file = hf_hub_download(repo_id=repo_id, repo_type="dataset", filename="train_scaled.csv", token=HF_TOKEN)
-test_file = hf_hub_download(repo_id=repo_id, repo_type="dataset", filename="test_scaled.csv", token=HF_TOKEN)
-
+train_file = hf_hub_download(repo_id=repo_id, filename='train_scaled.csv', token=HF_TOKEN)
+test_file = hf_hub_download(repo_id=repo_id, filename='test_scaled.csv', token=HF_TOKEN)
 train_df = pd.read_csv(train_file)
 test_df = pd.read_csv(test_file)
-
 X_train = train_df.drop('engine_condition', axis=1)
 y_train = train_df['engine_condition']
 X_test = test_df.drop('engine_condition', axis=1)
 y_test = test_df['engine_condition']
 
-logger.info("Training Bagging...")
-
-param_grid = {'n_estimators': [50, 100, 200], 'max_samples': [0.5, 0.7, 1.0]}
-
-with mlflow.start_run(run_name="Bagging"):
-    mlflow.set_tag("model_type", "Bagging")
-    
-    model = BaggingClassifier(random_state=42)
-    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1', n_jobs=-1)
-    grid_search.fit(X_train, y_train)
-    
-    best_model = grid_search.best_estimator_
-    mlflow.log_params(grid_search.best_params_)
-    
-    y_pred = best_model.predict(X_test)
-    
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred)
-    
-    mlflow.log_metric("accuracy", accuracy)
-    mlflow.log_metric("precision", precision)
-    mlflow.log_metric("recall", recall)
-    mlflow.log_metric("f1_score", f1)
-    
-    mlflow.sklearn.log_model(best_model, "model")
-    
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(best_model, "models/bagging.pkl")
-    
-    logger.info(f"✓ Bagging trained! F1-Score: {f1:.4f}")
+model = BaggingClassifier(random_state=42)
+grid = GridSearchCV(model, {'n_estimators': [50, 100]}, cv=3, scoring='f1', n_jobs=-1)
+grid.fit(X_train, y_train)
+best_model = grid.best_estimator_
+y_pred = best_model.predict(X_test)
+f1 = f1_score(y_test, y_pred)
+os.makedirs('models', exist_ok=True)
+joblib.dump(best_model, f"models/baggingclassifier.pkl")
+print(f"✓ BaggingClassifier trained with F1={f1:.4f}")
